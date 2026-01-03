@@ -36,8 +36,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className={`min-h-screen flex bg-gray-50 ${isRTL ? 'flex-row-reverse' : ''}`}>
       <Sidebar />
       <main className={`flex-1 ${isRTL ? 'lg:mr-0' : 'lg:ml-0'} p-6 pt-16 lg:pt-6`}>
-        {/* Language Selector - Top Right/Left */}
-        <div className={`fixed top-4 ${isRTL ? 'left-4' : 'right-4'} z-40`}>
+        {/* Language Selector - Top Right */}
+        <div className="fixed top-4 right-4 z-[9999]">
           <LanguageSelector />
         </div>
         {children}

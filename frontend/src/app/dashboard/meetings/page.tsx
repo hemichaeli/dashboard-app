@@ -151,7 +151,7 @@ export default function MeetingsPage() {
                   </div>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="text-gray-500">{meeting.task_count || 0} {t('tasks')}</div>
+                  <div className="text-gray-500">{meeting.task_count || 0} {t('tasksCount')}</div>
                   {(meeting.pending_tasks || 0) > 0 && <div className="text-yellow-600">{meeting.pending_tasks} {t('pending')}</div>}
                   {(meeting.urgent_tasks || 0) > 0 && <div className="text-red-600">{meeting.urgent_tasks} {t('urgent')}</div>}
                 </div>

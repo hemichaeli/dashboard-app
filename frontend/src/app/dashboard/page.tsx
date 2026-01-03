@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Users, Calendar, CheckSquare, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import Link from 'next/link';
+import { Users, Calendar, CheckSquare, AlertTriangle, TrendingUp, TrendingDown, Plus, CalendarPlus } from 'lucide-react';
 import { analyticsApi } from '@/lib/api';
 import { DashboardStats } from '@/types';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/lib/LanguageContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 function StatCard({ title, value, change, icon, color }: { title: string; value: number | string; change?: number; icon: React.ReactNode; color: string }) {
@@ -28,6 +30,7 @@ function StatCard({ title, value, change, icon, color }: { title: string; value:
 }
 
 export default function DashboardPage() {
+  const { t, isRTL } = useLanguage();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [meetingsData, setMeetingsData] = useState<any[]>([]);
   const [taskStats, setTaskStats] = useState<any>(null);
@@ -49,13 +52,60 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div><h1 className="text-2xl font-bold text-gray-900">Dashboard</h1><p className="text-gray-500">Welcome back! Here's what's happening.</p></div>
+      {/* Header with New Meeting Button */}
+      <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t('dashboard')}</h1>
+          <p className="text-gray-500">{t('dashboardSubtitle')}</p>
+        </div>
+        
+        {/* New Meeting Button - Prominent */}
+        <Link
+          href="/dashboard/meetings/new"
+          className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl font-medium"
+        >
+          <CalendarPlus size={20} />
+          {t('newMeeting')}
+        </Link>
+      </div>
+
+      {/* Quick Action Card */}
+      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+        <h2 className="text-lg font-semibold mb-3">{t('quickActions')}</h2>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/dashboard/meetings/new"
+            className="flex items-center gap-2 px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+          >
+            <Plus size={18} />
+            {t('newMeeting')}
+          </Link>
+          <Link
+            href="/dashboard/meetings"
+            className="flex items-center gap-2 px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+          >
+            <Calendar size={18} />
+            {t('meetings')}
+          </Link>
+          <Link
+            href="/dashboard/settings"
+            className="flex items-center gap-2 px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+          >
+            <Users size={18} />
+            {t('settings')}
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Total Users" value={stats?.totalUsers || 0} change={stats?.userGrowth} icon={<Users className="text-blue-600" size={24} />} color="bg-blue-100" />
         <StatCard title="Upcoming Meetings" value={stats?.upcomingMeetings || 0} icon={<Calendar className="text-green-600" size={24} />} color="bg-green-100" />
         <StatCard title="Pending Tasks" value={stats?.pendingTasks || 0} icon={<CheckSquare className="text-purple-600" size={24} />} color="bg-purple-100" />
         <StatCard title="Urgent Tasks" value={stats?.urgentTasks || 0} icon={<AlertTriangle className="text-red-600" size={24} />} color="bg-red-100" />
       </div>
+
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h2 className="text-lg font-semibold mb-4">Meetings Over Time</h2>
@@ -74,6 +124,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl shadow-sm p-6"><h3 className="text-lg font-semibold mb-4">This Week</h3><div className="space-y-4"><div className="flex justify-between items-center"><span className="text-gray-500">Meetings</span><span className="font-semibold">{stats?.meetingsThisWeek || 0}</span></div><div className="flex justify-between items-center"><span className="text-gray-500">Tasks Completed</span><span className="font-semibold">{stats?.completedTasksThisMonth || 0}</span></div><div className="flex justify-between items-center"><span className="text-gray-500">New Users</span><span className="font-semibold">{stats?.newUsersThisMonth || 0}</span></div></div></div>
         <div className="bg-white rounded-xl shadow-sm p-6"><h3 className="text-lg font-semibold mb-4">Tasks by Priority</h3><div className="space-y-4"><div className="flex justify-between items-center"><span className="text-gray-500">High</span><span className="font-semibold text-red-600">{taskStats?.byPriority?.high || 0}</span></div><div className="flex justify-between items-center"><span className="text-gray-500">Medium</span><span className="font-semibold text-yellow-600">{taskStats?.byPriority?.medium || 0}</span></div><div className="flex justify-between items-center"><span className="text-gray-500">Low</span><span className="font-semibold text-green-600">{taskStats?.byPriority?.low || 0}</span></div></div></div>

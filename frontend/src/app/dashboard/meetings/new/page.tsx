@@ -23,11 +23,12 @@ interface TeamMember {
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioUrl: string) => void;
+  onRecordingStop?: () => void;
   existingUrl?: string;
   label: string;
 }
 
-function VoiceRecorder({ onRecordingComplete, existingUrl, label }: VoiceRecorderProps) {
+function VoiceRecorder({ onRecordingComplete, onRecordingStop, existingUrl, label }: VoiceRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState(existingUrl || '');
@@ -76,6 +77,10 @@ function VoiceRecorder({ onRecordingComplete, existingUrl, label }: VoiceRecorde
       setIsRecording(false);
       if (timerRef.current) {
         clearInterval(timerRef.current);
+      }
+      // Call the onRecordingStop callback to update date/time
+      if (onRecordingStop) {
+        onRecordingStop();
       }
     }
   };
@@ -171,47 +176,19 @@ function VoiceRecorder({ onRecordingComplete, existingUrl, label }: VoiceRecorde
   );
 }
 
-// Helper function to get future meeting time defaults
-function getDefaultMeetingTimes() {
-  const now = new Date();
-  
-  // Round up to next hour
-  const startTime = new Date(now);
-  startTime.setMinutes(0, 0, 0);
-  startTime.setHours(startTime.getHours() + 1);
-  
-  // End time is 1 hour after start
-  const endTime = new Date(startTime);
-  endTime.setHours(endTime.getHours() + 1);
-  
-  // Format date as YYYY-MM-DD
-  const formatDate = (d: Date) => d.toISOString().split('T')[0];
-  
-  // Format time as HH:MM
-  const formatTime = (d: Date) => 
-    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  
-  return {
-    date: formatDate(startTime),
-    startTime: formatTime(startTime),
-    endTime: formatTime(endTime),
-  };
-}
-
 export default function NewMeetingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [dateTimeAutoSet, setDateTimeAutoSet] = useState(false);
   
-  // Get future time defaults (next hour)
-  const defaults = getDefaultMeetingTimes();
-
+  // Initialize with empty date/time - will be set when recording stops
   const [form, setForm] = useState({
     title: '',
     subject: '',
-    date: defaults.date,
-    time: defaults.startTime,
-    end_time: defaults.endTime,
+    date: '',
+    time: '',
+    end_time: '',
     location: '',
     meeting_link: '',
     goals: [''],
@@ -226,6 +203,22 @@ export default function NewMeetingPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
     { name: '', position: '', background: '', voiceSampleUrl: '' }
   ]);
+
+  // Function to set current date/time when recording stops
+  const setCurrentDateTime = () => {
+    const now = new Date();
+    const currentDate = now.toISOString().split('T')[0];
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const endTime = `${String(Math.min(now.getHours() + 1, 23)).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    
+    setForm(prev => ({
+      ...prev,
+      date: currentDate,
+      time: currentTime,
+      end_time: endTime,
+    }));
+    setDateTimeAutoSet(true);
+  };
 
   const addGoal = () => {
     setForm({ ...form, goals: [...form.goals, ''] });
@@ -355,7 +348,9 @@ export default function NewMeetingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date (auto-filled)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date {dateTimeAutoSet && <span className="text-green-600 text-xs">(auto-set)</span>}
+              </label>
               <input
                 type="date"
                 value={form.date}
@@ -364,7 +359,9 @@ export default function NewMeetingPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time (auto-filled)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Start Time {dateTimeAutoSet && <span className="text-green-600 text-xs">(auto-set)</span>}
+              </label>
               <input
                 type="time"
                 value={form.time}
@@ -373,7 +370,9 @@ export default function NewMeetingPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Time (auto-filled)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                End Time {dateTimeAutoSet && <span className="text-green-600 text-xs">(auto-set)</span>}
+              </label>
               <input
                 type="time"
                 value={form.end_time}
@@ -382,6 +381,12 @@ export default function NewMeetingPage() {
               />
             </div>
           </div>
+
+          {dateTimeAutoSet && (
+            <p className="text-sm text-green-600">
+              ✓ Date and time automatically set when recording stopped
+            </p>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -589,6 +594,7 @@ export default function NewMeetingPage() {
             label="My Voice Sample (record how you communicate)"
             existingUrl={form.my_voice_sample_url}
             onRecordingComplete={(url) => setForm({ ...form, my_voice_sample_url: url })}
+            onRecordingStop={setCurrentDateTime}
           />
         </div>
 

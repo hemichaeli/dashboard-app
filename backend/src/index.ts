@@ -6,6 +6,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import meetingRoutes from './routes/meetings';
 import analyticsRoutes from './routes/analytics';
+import aiRoutes from './routes/ai';
 import migrate from './config/migrate';
 
 dotenv.config();
@@ -44,6 +45,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 404 handler
 app.use((req, res) => {

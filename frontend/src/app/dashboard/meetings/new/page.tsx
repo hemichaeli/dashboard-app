@@ -171,23 +171,47 @@ function VoiceRecorder({ onRecordingComplete, existingUrl, label }: VoiceRecorde
   );
 }
 
+// Helper function to get future meeting time defaults
+function getDefaultMeetingTimes() {
+  const now = new Date();
+  
+  // Round up to next hour
+  const startTime = new Date(now);
+  startTime.setMinutes(0, 0, 0);
+  startTime.setHours(startTime.getHours() + 1);
+  
+  // End time is 1 hour after start
+  const endTime = new Date(startTime);
+  endTime.setHours(endTime.getHours() + 1);
+  
+  // Format date as YYYY-MM-DD
+  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  
+  // Format time as HH:MM
+  const formatTime = (d: Date) => 
+    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  
+  return {
+    date: formatDate(startTime),
+    startTime: formatTime(startTime),
+    endTime: formatTime(endTime),
+  };
+}
+
 export default function NewMeetingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Get today's date and current time for defaults
-  const today = new Date();
-  const defaultDate = today.toISOString().split('T')[0];
-  const defaultStartTime = `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`;
-  const defaultEndTime = `${String(Math.min(today.getHours() + 1, 23)).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`;
+  // Get future time defaults (next hour)
+  const defaults = getDefaultMeetingTimes();
 
   const [form, setForm] = useState({
     title: '',
     subject: '',
-    date: defaultDate,
-    time: defaultStartTime,
-    end_time: defaultEndTime,
+    date: defaults.date,
+    time: defaults.startTime,
+    end_time: defaults.endTime,
     location: '',
     meeting_link: '',
     goals: [''],

@@ -1,15 +1,16 @@
-import type { Metadata } from 'next';
-import './globals.css';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Dashboard',
-  description: 'Full-stack dashboard application',
-};
+import './globals.css';
+import { LanguageProvider } from '@/lib/LanguageContext';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="font-sans antialiased">{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased">
+        <LanguageProvider>
+          {children}
+        </LanguageProvider>
+      </body>
     </html>
   );
 }

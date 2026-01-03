@@ -16,6 +16,13 @@ export const translations = {
     tasks: 'Tasks',
     settings: 'Settings',
     logout: 'Logout',
+    users: 'Users',
+    analytics: 'Analytics',
+    
+    // Dashboard
+    welcomeBack: 'Welcome back',
+    dashboardSubtitle: 'Here is an overview of your meetings and tasks',
+    quickActions: 'Quick Actions',
     
     // Meetings List
     meetingsTitle: 'Meetings',
@@ -59,9 +66,11 @@ export const translations = {
     meetingGoals: 'Meeting Goals',
     addGoal: 'Add Goal',
     goal: 'Goal',
+    goals: 'Goals',
     
     // Participants
-    participantsTitle: 'Participants',
+    participantsTitle: 'Participants (Other Side)',
+    participantsDescription: 'Add information about the people you will meet with',
     addParticipant: 'Add Participant',
     participant: 'Participant',
     name: 'Name',
@@ -71,8 +80,18 @@ export const translations = {
     interests: 'Interests',
     background: 'Background',
     backgroundPlaceholder: 'Background information...',
+    voiceSampleParticipant: 'Voice Sample (record how they speak)',
     
-    // Team
+    // Team Selection
+    selectTeam: 'Select Team',
+    manageTeams: 'Manage Teams',
+    noTeamsYet: 'No teams created yet',
+    createTeamInSettings: 'Create a team in Settings',
+    selectTeamPlaceholder: 'Select a team for this meeting...',
+    members: 'Members',
+    projects: 'Projects',
+    
+    // My Team (legacy)
     myTeam: 'My Team',
     addTeamMember: 'Add Team Member',
     teamMember: 'Team Member',
@@ -123,6 +142,13 @@ export const translations = {
     tasks: 'משימות',
     settings: 'הגדרות',
     logout: 'התנתק',
+    users: 'משתמשים',
+    analytics: 'אנליטיקס',
+    
+    // Dashboard
+    welcomeBack: 'ברוך הבא',
+    dashboardSubtitle: 'הנה סקירה של הפגישות והמשימות שלך',
+    quickActions: 'פעולות מהירות',
     
     // Meetings List
     meetingsTitle: 'פגישות',
@@ -166,9 +192,11 @@ export const translations = {
     meetingGoals: 'מטרות הפגישה',
     addGoal: 'הוסף מטרה',
     goal: 'מטרה',
+    goals: 'מטרות',
     
     // Participants
-    participantsTitle: 'משתתפים',
+    participantsTitle: 'משתתפים (הצד השני)',
+    participantsDescription: 'הוסף מידע על האנשים שתיפגש איתם',
     addParticipant: 'הוסף משתתף',
     participant: 'משתתף',
     name: 'שם',
@@ -178,8 +206,18 @@ export const translations = {
     interests: 'תחומי עניין',
     background: 'רקע',
     backgroundPlaceholder: 'מידע רקע...',
+    voiceSampleParticipant: 'דגימת קול (הקלט איך הם מדברים)',
     
-    // Team
+    // Team Selection
+    selectTeam: 'בחר צוות',
+    manageTeams: 'נהל צוותים',
+    noTeamsYet: 'עדיין לא נוצרו צוותים',
+    createTeamInSettings: 'צור צוות בהגדרות',
+    selectTeamPlaceholder: 'בחר צוות לפגישה זו...',
+    members: 'חברים',
+    projects: 'פרויקטים',
+    
+    // My Team (legacy)
     myTeam: 'הצוות שלי',
     addTeamMember: 'הוסף חבר צוות',
     teamMember: 'חבר צוות',

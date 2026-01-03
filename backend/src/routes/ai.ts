@@ -8,8 +8,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Model to use for AI analysis
-const AI_MODEL = 'gpt-5-mini';
+// Model to use for AI analysis - GPT-4o-mini is fast and cost-effective
+const AI_MODEL = 'gpt-4o-mini';
 
 interface MeetingContext {
   title: string;

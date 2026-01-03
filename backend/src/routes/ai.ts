@@ -8,6 +8,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Model to use for AI analysis
+const AI_MODEL = 'gpt-5-mini';
+
 interface MeetingContext {
   title: string;
   goals: string[];
@@ -66,7 +69,7 @@ Analyze the conversation and provide insights in the following JSON format ONLY 
 }`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: AI_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Recent conversation transcript:\n${recentTranscript}\n\nProvide real-time analysis.` }
@@ -126,7 +129,7 @@ router.post('/sentiment', authenticateToken, async (req, res) => {
     }
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: AI_MODEL,
       messages: [
         { 
           role: 'system', 
@@ -155,7 +158,7 @@ router.post('/suggest-response', authenticateToken, async (req, res) => {
     const { lastStatement, meetingGoals, context } = req.body;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: AI_MODEL,
       messages: [
         { 
           role: 'system', 

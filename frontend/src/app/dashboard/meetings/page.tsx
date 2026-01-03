@@ -6,8 +6,10 @@ import { Plus, Calendar, Clock, MapPin, Users, Search, Filter } from 'lucide-rea
 import { meetingsApi } from '@/lib/api';
 import { Meeting, PaginatedResponse } from '@/types';
 import { formatDate, formatTime, cn } from '@/lib/utils';
+import { useLanguage } from '@/lib/LanguageContext';
 
 export default function MeetingsPage() {
+  const { t } = useLanguage();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +25,6 @@ export default function MeetingsPage() {
       try {
         const res = await meetingsApi.getAll({ page, limit: 10, status: statusFilter || undefined, search: search || undefined });
         const data = res.data as PaginatedResponse<Meeting>;
-        
-        // Safe access with fallbacks
         setMeetings(data?.data || []);
         setTotalPages(data?.pagination?.pages || 1);
       } catch (err: any) { 
@@ -47,16 +47,25 @@ export default function MeetingsPage() {
     }
   };
 
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'upcoming': return t('upcoming');
+      case 'completed': return t('completed');
+      case 'cancelled': return t('cancelled');
+      default: return status;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Meetings</h1>
-          <p className="text-gray-500">Manage your meetings and schedules</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('meetingsTitle')}</h1>
+          <p className="text-gray-500">{t('meetingsSubtitle')}</p>
         </div>
         <Link href="/dashboard/meetings/new" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
           <Plus size={20} />
-          <span>New Meeting</span>
+          <span>{t('newMeeting')}</span>
         </Link>
       </div>
 
@@ -66,7 +75,7 @@ export default function MeetingsPage() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input 
               type="text" 
-              placeholder="Search meetings..." 
+              placeholder={t('searchMeetings')}
               value={search} 
               onChange={(e) => { setSearch(e.target.value); setPage(1); }} 
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
@@ -79,10 +88,10 @@ export default function MeetingsPage() {
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} 
               className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
             >
-              <option value="">All Status</option>
-              <option value="upcoming">Upcoming</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="">{t('allStatus')}</option>
+              <option value="upcoming">{t('upcoming')}</option>
+              <option value="completed">{t('completed')}</option>
+              <option value="cancelled">{t('cancelled')}</option>
             </select>
           </div>
         </div>
@@ -102,8 +111,8 @@ export default function MeetingsPage() {
       ) : meetings.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-12 text-center">
           <Calendar className="mx-auto text-gray-400 mb-4" size={48} />
-          <h3 className="text-lg font-medium text-gray-900">No meetings found</h3>
-          <p className="text-gray-500 mt-1">Create your first meeting to get started</p>
+          <h3 className="text-lg font-medium text-gray-900">{t('noMeetingsFound')}</h3>
+          <p className="text-gray-500 mt-1">{t('createFirstMeeting')}</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -113,7 +122,9 @@ export default function MeetingsPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold text-gray-900">{meeting.title}</h3>
-                    <span className={cn('px-2 py-1 rounded-full text-xs font-medium', getStatusColor(meeting.status))}>{meeting.status}</span>
+                    <span className={cn('px-2 py-1 rounded-full text-xs font-medium', getStatusColor(meeting.status))}>
+                      {getStatusText(meeting.status)}
+                    </span>
                   </div>
                   {meeting.subject && <p className="text-gray-600">{meeting.subject}</p>}
                   <div className="flex flex-wrap gap-4 text-sm text-gray-500">
@@ -135,14 +146,14 @@ export default function MeetingsPage() {
                     )}
                     <div className="flex items-center gap-1">
                       <Users size={16} />
-                      <span>{meeting.participant_count || 0} participants</span>
+                      <span>{meeting.participant_count || 0} {t('participants')}</span>
                     </div>
                   </div>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="text-gray-500">{meeting.task_count || 0} tasks</div>
-                  {(meeting.pending_tasks || 0) > 0 && <div className="text-yellow-600">{meeting.pending_tasks} pending</div>}
-                  {(meeting.urgent_tasks || 0) > 0 && <div className="text-red-600">{meeting.urgent_tasks} urgent</div>}
+                  <div className="text-gray-500">{meeting.task_count || 0} {t('tasks')}</div>
+                  {(meeting.pending_tasks || 0) > 0 && <div className="text-yellow-600">{meeting.pending_tasks} {t('pending')}</div>}
+                  {(meeting.urgent_tasks || 0) > 0 && <div className="text-red-600">{meeting.urgent_tasks} {t('urgent')}</div>}
                 </div>
               </div>
             </Link>
@@ -157,15 +168,15 @@ export default function MeetingsPage() {
             disabled={page === 1} 
             className="px-4 py-2 border rounded-lg disabled:opacity-50"
           >
-            Previous
+            {t('previous')}
           </button>
-          <span className="px-4 py-2">Page {page} of {totalPages}</span>
+          <span className="px-4 py-2">{t('page')} {page} {t('of')} {totalPages}</span>
           <button 
             onClick={() => setPage(p => Math.min(totalPages, p + 1))} 
             disabled={page === totalPages} 
             className="px-4 py-2 border rounded-lg disabled:opacity-50"
           >
-            Next
+            {t('next')}
           </button>
         </div>
       )}

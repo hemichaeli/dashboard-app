@@ -33,12 +33,23 @@ const AppleIcon = () => (
   </svg>
 );
 
+// Microsoft Icon Component
+const MicrosoftIcon = () => (
+  <svg className="h-5 w-5" viewBox="0 0 24 24">
+    <path fill="#F25022" d="M1 1h10v10H1z" />
+    <path fill="#00A4EF" d="M1 13h10v10H1z" />
+    <path fill="#7FBA00" d="M13 1h10v10H13z" />
+    <path fill="#FFB900" d="M13 13h10v10H13z" />
+  </svg>
+);
+
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<string | null>(null);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
@@ -55,9 +66,18 @@ export default function LoginPage() {
     }
   };
 
-  const handleSocialLogin = (provider: string) => {
-    // TODO: Implement OAuth flow
-    setError(`${provider} login coming soon!`);
+  const handleSocialLogin = async (provider: string) => {
+    setSocialLoading(provider);
+    setError('');
+    
+    try {
+      // Redirect to backend OAuth endpoint
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://backend-production-12f2.up.railway.app';
+      window.location.href = `${backendUrl}/api/auth/${provider.toLowerCase()}`;
+    } catch (err) {
+      setError(`${provider} login is not configured yet. Please use email login.`);
+      setSocialLoading(null);
+    }
   };
 
   return (
@@ -76,17 +96,30 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => handleSocialLogin('Google')}
-            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            disabled={socialLoading !== null}
+            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
           >
-            <GoogleIcon />
+            {socialLoading === 'Google' ? <Loader2 className="h-5 w-5 animate-spin" /> : <GoogleIcon />}
             Continue with Google
           </button>
+          
+          <button
+            type="button"
+            onClick={() => handleSocialLogin('Microsoft')}
+            disabled={socialLoading !== null}
+            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
+          >
+            {socialLoading === 'Microsoft' ? <Loader2 className="h-5 w-5 animate-spin" /> : <MicrosoftIcon />}
+            Continue with Microsoft
+          </button>
+          
           <button
             type="button"
             onClick={() => handleSocialLogin('Apple')}
-            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-black text-sm font-medium text-white hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+            disabled={socialLoading !== null}
+            className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-black text-sm font-medium text-white hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors disabled:opacity-50"
           >
-            <AppleIcon />
+            {socialLoading === 'Apple' ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <AppleIcon />}
             Continue with Apple
           </button>
         </div>
@@ -105,13 +138,27 @@ export default function LoginPage() {
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email address</label>
-              <input id="email" type="email" autoComplete="email" {...register('email')} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="you@example.com" />
+              <input 
+                id="email" 
+                type="email" 
+                autoComplete="email" 
+                {...register('email')} 
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                placeholder="you@example.com" 
+              />
               {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
             </div>
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
               <div className="relative mt-1">
-                <input id="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" {...register('password')} className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10" placeholder="Enter your password" />
+                <input 
+                  id="password" 
+                  type={showPassword ? 'text' : 'password'} 
+                  autoComplete="current-password" 
+                  {...register('password')} 
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-10" 
+                  placeholder="Enter your password" 
+                />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600">
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
@@ -119,11 +166,23 @@ export default function LoginPage() {
               {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>}
             </div>
           </div>
+          
           <button type="submit" disabled={isLoading} className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
             {isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Signing in...</> : 'Sign in'}
           </button>
-          <p className="text-center text-sm text-gray-600">Don't have an account?{' '}<Link href="/auth/register" className="font-medium text-blue-600 hover:text-blue-500">Sign up</Link></p>
+          
+          <p className="text-center text-sm text-gray-600">
+            Don't have an account?{' '}
+            <Link href="/auth/register" className="font-medium text-blue-600 hover:text-blue-500">Sign up</Link>
+          </p>
         </form>
+        
+        {/* Demo Account Info */}
+        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-800 font-medium mb-2">Demo Account:</p>
+          <p className="text-sm text-blue-700">Email: test@example.com</p>
+          <p className="text-sm text-blue-700">Password: password123</p>
+        </div>
       </div>
     </div>
   );

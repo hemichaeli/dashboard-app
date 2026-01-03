@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Loader2, Plus, Trash2, Mic, Square, Play, Pause } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Loader2, Plus, Trash2, Mic, Square, Play, Pause, Users, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { meetingsApi } from '@/lib/api';
 import { useLanguage } from '@/lib/LanguageContext';
@@ -16,10 +16,19 @@ interface Participant {
 }
 
 interface TeamMember {
+  id: string;
   name: string;
-  position: string;
-  background: string;
-  voiceSampleUrl: string;
+  role: string;
+  email?: string;
+}
+
+interface Team {
+  id: string;
+  name: string;
+  description: string;
+  projects: string[];
+  goals: string[];
+  members: TeamMember[];
 }
 
 interface VoiceRecorderProps {
@@ -48,9 +57,7 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStop, existingUrl, labe
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       mediaRecorder.onstop = () => {
@@ -64,9 +71,7 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStop, existingUrl, labe
       mediaRecorder.start();
       setIsRecording(true);
       setDuration(0);
-      timerRef.current = setInterval(() => {
-        setDuration(d => d + 1);
-      }, 1000);
+      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
     } catch (err) {
       console.error('Error accessing microphone:', err);
       alert(t('microphoneError'));
@@ -77,18 +82,13 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStop, existingUrl, labe
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      if (onRecordingStop) {
-        onRecordingStop();
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (onRecordingStop) onRecordingStop();
     }
   };
 
   const togglePlayback = () => {
     if (!audioRef.current) return;
-    
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -121,21 +121,13 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStop, existingUrl, labe
         {!audioUrl ? (
           <>
             {!isRecording ? (
-              <button
-                type="button"
-                onClick={startRecording}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              >
+              <button type="button" onClick={startRecording} className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
                 <Mic size={18} />
                 {t('startRecording')}
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={stopRecording}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
-                >
+                <button type="button" onClick={stopRecording} className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors">
                   <Square size={18} />
                   {t('stop')}
                 </button>
@@ -148,26 +140,13 @@ function VoiceRecorder({ onRecordingComplete, onRecordingStop, existingUrl, labe
           </>
         ) : (
           <>
-            <audio
-              ref={audioRef}
-              src={audioUrl}
-              onEnded={() => setIsPlaying(false)}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={togglePlayback}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
+            <audio ref={audioRef} src={audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" />
+            <button type="button" onClick={togglePlayback} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
               {isPlaying ? <Pause size={18} /> : <Play size={18} />}
               {isPlaying ? t('pause') : t('play')}
             </button>
             <span className="text-gray-600 text-sm">{t('recordingSaved')}</span>
-            <button
-              type="button"
-              onClick={deleteRecording}
-              className="ml-auto p-2 text-red-500 hover:bg-red-50 rounded-lg"
-            >
+            <button type="button" onClick={deleteRecording} className="ml-auto p-2 text-red-500 hover:bg-red-50 rounded-lg">
               <Trash2 size={18} />
             </button>
           </>
@@ -184,6 +163,11 @@ export default function NewMeetingPage() {
   const [error, setError] = useState('');
   const [dateTimeAutoSet, setDateTimeAutoSet] = useState(false);
   
+  // Teams from Settings
+  const [availableTeams, setAvailableTeams] = useState<Team[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  
   const [form, setForm] = useState({
     title: '',
     subject: '',
@@ -194,16 +178,29 @@ export default function NewMeetingPage() {
     meeting_link: '',
     goals: [''],
     concerns: '',
-    my_voice_sample_url: '',
   });
 
   const [participants, setParticipants] = useState<Participant[]>([
     { name: '', role: '', company: '', background: '', interests: '' }
   ]);
 
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
-    { name: '', position: '', background: '', voiceSampleUrl: '' }
-  ]);
+  // Load teams from localStorage (Settings)
+  useEffect(() => {
+    const savedTeams = localStorage.getItem('userTeams');
+    if (savedTeams) {
+      setAvailableTeams(JSON.parse(savedTeams));
+    }
+  }, []);
+
+  // Update selected team when dropdown changes
+  useEffect(() => {
+    if (selectedTeamId) {
+      const team = availableTeams.find(t => t.id === selectedTeamId);
+      setSelectedTeam(team || null);
+    } else {
+      setSelectedTeam(null);
+    }
+  }, [selectedTeamId, availableTeams]);
 
   const setCurrentDateTime = () => {
     const now = new Date();
@@ -240,16 +237,6 @@ export default function NewMeetingPage() {
     if (participants.length > 1) setParticipants(participants.filter((_, i) => i !== index));
   };
 
-  const addTeamMember = () => setTeamMembers([...teamMembers, { name: '', position: '', background: '', voiceSampleUrl: '' }]);
-  const updateTeamMember = (index: number, field: keyof TeamMember, value: string) => {
-    const newMembers = [...teamMembers];
-    newMembers[index][field] = value;
-    setTeamMembers(newMembers);
-  };
-  const removeTeamMember = (index: number) => {
-    if (teamMembers.length > 1) setTeamMembers(teamMembers.filter((_, i) => i !== index));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title) {
@@ -259,6 +246,10 @@ export default function NewMeetingPage() {
     setLoading(true);
     setError('');
     try {
+      // Get user profile from localStorage
+      const userProfile = localStorage.getItem('userProfile');
+      const parsedProfile = userProfile ? JSON.parse(userProfile) : null;
+      
       const payload = {
         ...form,
         goals: form.goals.filter(g => g.trim() !== ''),
@@ -271,8 +262,8 @@ export default function NewMeetingPage() {
         })),
         additional_notes: JSON.stringify({
           concerns: form.concerns,
-          my_voice_sample_url: form.my_voice_sample_url,
-          team_members: teamMembers.filter(t => t.name.trim() !== ''),
+          selected_team: selectedTeam,
+          user_profile: parsedProfile,
         }),
       };
       const res = await meetingsApi.create(payload);
@@ -394,6 +385,86 @@ export default function NewMeetingPage() {
           </div>
         </div>
 
+        {/* Select Team from Settings */}
+        <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between border-b pb-2">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Users size={20} />
+              {t('selectTeam')}
+            </h2>
+            <Link href="/dashboard/settings" className="text-sm text-blue-600 hover:underline">
+              {t('manageTeams')}
+            </Link>
+          </div>
+          
+          {availableTeams.length === 0 ? (
+            <div className="text-center py-6 bg-gray-50 rounded-lg">
+              <Users size={32} className="mx-auto text-gray-400 mb-2" />
+              <p className="text-gray-600">{t('noTeamsYet')}</p>
+              <Link href="/dashboard/settings" className="text-blue-600 hover:underline text-sm">
+                {t('createTeamInSettings')}
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="relative">
+                <select
+                  value={selectedTeamId}
+                  onChange={(e) => setSelectedTeamId(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white appearance-none cursor-pointer"
+                >
+                  <option value="">{t('selectTeamPlaceholder')}</option>
+                  {availableTeams.map(team => (
+                    <option key={team.id} value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+                <ChevronDown size={20} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+
+              {/* Show selected team details */}
+              {selectedTeam && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <h3 className="font-semibold text-blue-900">{selectedTeam.name}</h3>
+                  {selectedTeam.description && <p className="text-blue-700 text-sm mt-1">{selectedTeam.description}</p>}
+                  
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    {selectedTeam.members.filter(m => m.name).length > 0 && (
+                      <div>
+                        <p className="font-medium text-blue-800">{t('members')}:</p>
+                        <ul className="text-blue-700">
+                          {selectedTeam.members.filter(m => m.name).map(m => (
+                            <li key={m.id}>{m.name} {m.role && `(${m.role})`}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {selectedTeam.projects.filter(p => p).length > 0 && (
+                      <div>
+                        <p className="font-medium text-blue-800">{t('projects')}:</p>
+                        <ul className="text-blue-700">
+                          {selectedTeam.projects.filter(p => p).map((p, i) => (
+                            <li key={i}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {selectedTeam.goals.filter(g => g).length > 0 && (
+                      <div>
+                        <p className="font-medium text-blue-800">{t('goals')}:</p>
+                        <ul className="text-blue-700">
+                          {selectedTeam.goals.filter(g => g).map((g, i) => (
+                            <li key={i}>{g}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Goals */}
         <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b pb-2">
@@ -422,7 +493,7 @@ export default function NewMeetingPage() {
           ))}
         </div>
 
-        {/* Participants */}
+        {/* Participants (Other side) */}
         <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
           <div className="flex items-center justify-between border-b pb-2">
             <h2 className="text-lg font-semibold text-gray-900">{t('participantsTitle')}</h2>
@@ -430,6 +501,7 @@ export default function NewMeetingPage() {
               <Plus size={16} /> {t('addParticipant')}
             </button>
           </div>
+          <p className="text-sm text-gray-500">{t('participantsDescription')}</p>
           
           {participants.map((participant, index) => (
             <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-3">
@@ -448,40 +520,12 @@ export default function NewMeetingPage() {
                 <input type="text" value={participant.interests} onChange={(e) => updateParticipant(index, 'interests', e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" placeholder={t('interests')} />
               </div>
               <textarea value={participant.background} onChange={(e) => updateParticipant(index, 'background', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" placeholder={t('backgroundPlaceholder')} rows={2} />
+              <VoiceRecorder label={t('voiceSampleParticipant')} existingUrl="" onRecordingComplete={(url) => {}} />
             </div>
           ))}
         </div>
 
-        {/* My Team */}
-        <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between border-b pb-2">
-            <h2 className="text-lg font-semibold text-gray-900">{t('myTeam')}</h2>
-            <button type="button" onClick={addTeamMember} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700">
-              <Plus size={16} /> {t('addTeamMember')}
-            </button>
-          </div>
-          
-          {teamMembers.map((member, index) => (
-            <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-gray-700">{t('teamMember')} {index + 1}</span>
-                {teamMembers.length > 1 && (
-                  <button type="button" onClick={() => removeTeamMember(index)} className="p-1 text-red-500 hover:bg-red-50 rounded">
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input type="text" value={member.name} onChange={(e) => updateTeamMember(index, 'name', e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" placeholder={t('name')} />
-                <input type="text" value={member.position} onChange={(e) => updateTeamMember(index, 'position', e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" placeholder={t('position')} />
-              </div>
-              <textarea value={member.background} onChange={(e) => updateTeamMember(index, 'background', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white" placeholder={t('backgroundPlaceholder')} rows={2} />
-              <VoiceRecorder label={t('voiceSampleTeam')} existingUrl={member.voiceSampleUrl} onRecordingComplete={(url) => updateTeamMember(index, 'voiceSampleUrl', url)} />
-            </div>
-          ))}
-        </div>
-
-        {/* Concerns & My Voice */}
+        {/* Additional Notes (No voice recording) */}
         <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
           <h2 className="text-lg font-semibold text-gray-900 border-b pb-2">{t('additionalNotes')}</h2>
           
@@ -495,13 +539,6 @@ export default function NewMeetingPage() {
               rows={3}
             />
           </div>
-
-          <VoiceRecorder
-            label={t('myVoiceSample')}
-            existingUrl={form.my_voice_sample_url}
-            onRecordingComplete={(url) => setForm({ ...form, my_voice_sample_url: url })}
-            onRecordingStop={setCurrentDateTime}
-          />
         </div>
 
         {/* Actions */}

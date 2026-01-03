@@ -75,12 +75,43 @@ export const analyticsApi = {
   getActivityLog: (limit?: number) => api.get('/analytics/activity', { params: { limit } }),
 };
 
-export interface MeetingContext {
-  title: string;
+// User Profile from Settings
+export interface UserProfile {
+  name: string;
+  email: string;
+  role: string;
+  company: string;
+  background: string;
+}
+
+// Team from Settings
+export interface TeamContext {
+  name: string;
+  description: string;
+  projects: string[];
   goals: string[];
-  participants: { name: string; role: string; company: string }[];
-  teamMembers: { name: string; position: string }[];
+  members: { name: string; role: string }[];
+}
+
+// Full Meeting Context for AI Analysis
+export interface MeetingContext {
+  // Meeting Brief Info
+  title: string;
+  subject?: string;
+  goals: string[];
   concerns: string;
+  
+  // Other side participants
+  participants: { name: string; role: string; company: string; background?: string }[];
+  
+  // My Profile (from Settings)
+  myProfile?: UserProfile;
+  
+  // Selected Team (from Settings)
+  selectedTeam?: TeamContext;
+  
+  // Legacy - team members defined in meeting
+  teamMembers?: { name: string; position: string }[];
 }
 
 export interface AnalysisResult {

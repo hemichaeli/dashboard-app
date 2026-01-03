@@ -75,4 +75,45 @@ export const analyticsApi = {
   getActivityLog: (limit?: number) => api.get('/analytics/activity', { params: { limit } }),
 };
 
+export interface MeetingContext {
+  title: string;
+  goals: string[];
+  participants: { name: string; role: string; company: string }[];
+  teamMembers: { name: string; position: string }[];
+  concerns: string;
+}
+
+export interface AnalysisResult {
+  suggestions: string[];
+  goalProgress: { goal: string; progress: string; tips: string }[];
+  otherSideAnalysis: {
+    mood: string;
+    moodScore: number;
+    tone: string;
+    engagement: string;
+    concerns: string[];
+  };
+  lieDetector: {
+    confidence: number;
+    indicators: string[];
+    status: 'truthful' | 'uncertain' | 'suspicious';
+  };
+  keyInsights: string[];
+  nextMoves: string[];
+}
+
+export const aiApi = {
+  // Analyze meeting transcript in real-time
+  analyze: (transcript: string[], meetingContext: MeetingContext, previousAnalysis?: AnalysisResult) => 
+    api.post<AnalysisResult>('/ai/analyze', { transcript, meetingContext, previousAnalysis }),
+  
+  // Quick sentiment analysis for a single utterance
+  sentiment: (text: string) => 
+    api.post<{ sentiment: string; confidence: number; authenticity: string; emotion: string }>('/ai/sentiment', { text }),
+  
+  // Generate strategic response suggestions
+  suggestResponse: (lastStatement: string, meetingGoals: string[], context?: string) => 
+    api.post<{ responses: { text: string; strategy: string; tone: string }[] }>('/ai/suggest-response', { lastStatement, meetingGoals, context }),
+};
+
 export default api;

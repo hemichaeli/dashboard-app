@@ -3,11 +3,14 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
+import { LanguageSelector } from '@/components/LanguageSelector';
 import { useAuthStore } from '@/store/auth';
+import { useLanguage } from '@/lib/LanguageContext';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isRTL } = useLanguage();
 
   useEffect(() => {
     checkAuth();
@@ -30,9 +33,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
+    <div className={`min-h-screen flex bg-gray-50 ${isRTL ? 'flex-row-reverse' : ''}`}>
       <Sidebar />
-      <main className="flex-1 lg:ml-0 p-6 pt-16 lg:pt-6">{children}</main>
+      <main className={`flex-1 ${isRTL ? 'lg:mr-0' : 'lg:ml-0'} p-6 pt-16 lg:pt-6`}>
+        {/* Language Selector - Top Right/Left */}
+        <div className={`fixed top-4 ${isRTL ? 'left-4' : 'right-4'} z-40`}>
+          <LanguageSelector />
+        </div>
+        {children}
+      </main>
     </div>
   );
 }

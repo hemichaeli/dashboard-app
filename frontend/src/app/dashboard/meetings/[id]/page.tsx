@@ -1,36 +1,17 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   ArrowLeft, Calendar, Clock, MapPin, Link as LinkIcon, 
   Trash2, Edit2, Play, Square, Ear, Target, Brain, 
   TrendingUp, AlertTriangle, Lightbulb, Users, MessageSquare,
-  Activity, Eye, ThumbsUp, ThumbsDown
+  Activity, Eye, ThumbsUp, ThumbsDown, Loader2, RefreshCw
 } from 'lucide-react';
-import { meetingsApi } from '@/lib/api';
+import { meetingsApi, aiApi, AnalysisResult, MeetingContext } from '@/lib/api';
 import { Meeting } from '@/types';
 import { formatDate, formatTime, cn } from '@/lib/utils';
-
-interface AnalysisData {
-  suggestions: string[];
-  goalProgress: { goal: string; progress: string; tips: string }[];
-  otherSideAnalysis: {
-    mood: string;
-    moodScore: number;
-    tone: string;
-    engagement: string;
-    concerns: string[];
-  };
-  lieDetector: {
-    confidence: number;
-    indicators: string[];
-    status: 'truthful' | 'uncertain' | 'suspicious';
-  };
-  keyInsights: string[];
-  nextMoves: string[];
-}
 
 export default function MeetingDetailPage() {
   const params = useParams();
@@ -40,9 +21,12 @@ export default function MeetingDetailPage() {
   const [activeTab, setActiveTab] = useState<'brief' | 'participants' | 'tasks'>('brief');
   const [isListening, setIsListening] = useState(false);
   const [meetingStarted, setMeetingStarted] = useState(false);
-  const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const [transcript, setTranscript] = useState<string[]>([]);
+  const [lastAnalyzedLength, setLastAnalyzedLength] = useState(0);
   const recognitionRef = useRef<any>(null);
+  const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const fetchMeeting = async () => {
@@ -69,45 +53,69 @@ export default function MeetingDetailPage() {
     }
   };
 
-  const startListening = () => {
+  const additionalNotes = meeting ? parseAdditionalNotes(meeting.additional_notes) : null;
+
+  // Build meeting context for AI
+  const getMeetingContext = useCallback((): MeetingContext => {
+    return {
+      title: meeting?.title || '',
+      goals: meeting?.goals || [],
+      participants: meeting?.participants?.map(p => ({
+        name: p.name,
+        role: p.role || '',
+        company: p.company || ''
+      })) || [],
+      teamMembers: additionalNotes?.team_members?.map((t: any) => ({
+        name: t.name,
+        position: t.position || ''
+      })) || [],
+      concerns: additionalNotes?.concerns || ''
+    };
+  }, [meeting, additionalNotes]);
+
+  // Call AI for analysis
+  const runAnalysis = useCallback(async () => {
+    if (transcript.length === 0 || transcript.length === lastAnalyzedLength) return;
+    
+    setAnalyzing(true);
+    try {
+      const response = await aiApi.analyze(transcript, getMeetingContext(), analysis || undefined);
+      setAnalysis(response.data);
+      setLastAnalyzedLength(transcript.length);
+    } catch (error) {
+      console.error('AI Analysis failed:', error);
+      // Keep previous analysis on error
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [transcript, lastAnalyzedLength, getMeetingContext, analysis]);
+
+  // Auto-analyze every 10 seconds when listening
+  useEffect(() => {
+    if (isListening && transcript.length > 0) {
+      // Run analysis immediately when new transcript arrives
+      if (transcript.length > lastAnalyzedLength && !analyzing) {
+        runAnalysis();
+      }
+
+      // Set up interval for periodic analysis
+      analysisIntervalRef.current = setInterval(() => {
+        if (transcript.length > lastAnalyzedLength && !analyzing) {
+          runAnalysis();
+        }
+      }, 10000);
+    }
+
+    return () => {
+      if (analysisIntervalRef.current) {
+        clearInterval(analysisIntervalRef.current);
+      }
+    };
+  }, [isListening, transcript, lastAnalyzedLength, analyzing, runAnalysis]);
+
+  const startListening = async () => {
     setMeetingStarted(true);
     setIsListening(true);
-    
-    // Initialize mock analysis (in production, this would connect to real AI)
-    setAnalysis({
-      suggestions: [
-        'Consider addressing budget concerns early in the conversation',
-        'The participant seems interested in timeline - be prepared with dates',
-        'Build rapport before diving into technical details'
-      ],
-      goalProgress: meeting?.goals?.map(goal => ({
-        goal,
-        progress: 'In Progress',
-        tips: 'Keep steering the conversation toward this objective'
-      })) || [],
-      otherSideAnalysis: {
-        mood: 'Engaged',
-        moodScore: 75,
-        tone: 'Professional, slightly cautious',
-        engagement: 'High - asking follow-up questions',
-        concerns: ['Budget constraints', 'Implementation timeline']
-      },
-      lieDetector: {
-        confidence: 85,
-        indicators: ['Consistent eye contact patterns', 'Natural speech rhythm'],
-        status: 'truthful'
-      },
-      keyInsights: [
-        'Decision maker is present and attentive',
-        'Budget was mentioned 3 times - key concern',
-        'Positive body language when discussing features'
-      ],
-      nextMoves: [
-        'Present ROI analysis to address budget concerns',
-        'Offer flexible payment terms',
-        'Schedule follow-up demo with technical team'
-      ]
-    });
 
     // Try to use Web Speech API for real transcription
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -115,15 +123,63 @@ export default function MeetingDetailPage() {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'he-IL'; // Hebrew, can be changed
       
       recognitionRef.current.onresult = (event: any) => {
         const result = event.results[event.results.length - 1];
         if (result.isFinal) {
-          setTranscript(prev => [...prev, result[0].transcript]);
+          const newText = result[0].transcript;
+          setTranscript(prev => [...prev, newText]);
+        }
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          alert('Microphone access denied. Please allow microphone access to use this feature.');
+        }
+      };
+
+      recognitionRef.current.onend = () => {
+        // Restart if still listening
+        if (isListening && recognitionRef.current) {
+          try {
+            recognitionRef.current.start();
+          } catch (e) {
+            console.log('Recognition restart failed:', e);
+          }
         }
       };
       
-      recognitionRef.current.start();
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error('Failed to start speech recognition:', e);
+      }
+    } else {
+      alert('Speech recognition is not supported in this browser. Please use Chrome.');
+    }
+
+    // If no transcript yet, run initial analysis with empty transcript
+    if (transcript.length === 0) {
+      setAnalyzing(true);
+      try {
+        const response = await aiApi.analyze(['Meeting started...'], getMeetingContext());
+        setAnalysis(response.data);
+      } catch (error) {
+        console.error('Initial analysis failed:', error);
+        // Set default analysis on error
+        setAnalysis({
+          suggestions: ['Waiting for conversation to begin...', 'Introduce your objectives early', 'Listen actively to understand the other side'],
+          goalProgress: meeting?.goals?.map(g => ({ goal: g, progress: 'Not Started', tips: 'Steer the conversation toward this goal' })) || [],
+          otherSideAnalysis: { mood: 'Waiting', moodScore: 50, tone: 'Not yet detected', engagement: 'Meeting just started', concerns: [] },
+          lieDetector: { confidence: 0, indicators: ['Waiting for speech...'], status: 'truthful' },
+          keyInsights: ['Meeting has begun', 'Waiting for conversation data...'],
+          nextMoves: ['Introduce yourself and your objectives', 'Build rapport', 'Listen for key concerns']
+        });
+      } finally {
+        setAnalyzing(false);
+      }
     }
   };
 
@@ -139,6 +195,9 @@ export default function MeetingDetailPage() {
     setIsListening(false);
     if (recognitionRef.current) {
       recognitionRef.current.stop();
+    }
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
     }
   };
 
@@ -159,8 +218,6 @@ export default function MeetingDetailPage() {
   );
   
   if (!meeting) return null;
-
-  const additionalNotes = parseAdditionalNotes(meeting.additional_notes);
 
   const getStatusColor = (status: string) => {
     switch (status) { 
@@ -285,10 +342,21 @@ export default function MeetingDetailPage() {
               <Ear size={32} className="text-blue-600 animate-pulse" />
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
             </div>
-            <div>
+            <div className="flex-1">
               <p className="font-medium text-blue-800">Listening to meeting...</p>
-              <p className="text-sm text-blue-600">AI is analyzing the conversation in real-time</p>
+              <p className="text-sm text-blue-600">
+                {transcript.length} phrases captured | AI analyzing in real-time
+                {analyzing && <Loader2 className="inline ml-2 animate-spin" size={14} />}
+              </p>
             </div>
+            <button
+              onClick={runAnalysis}
+              disabled={analyzing}
+              className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={analyzing ? 'animate-spin' : ''} />
+              Analyze Now
+            </button>
           </div>
         )}
 
@@ -344,6 +412,7 @@ export default function MeetingDetailPage() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Lightbulb size={20} className="text-yellow-500" />
               Suggestions & Ideas
+              {analyzing && <Loader2 className="animate-spin ml-2" size={16} />}
             </h3>
             <div className="space-y-3">
               {analysis.suggestions.map((suggestion, i) => (
@@ -366,7 +435,12 @@ export default function MeetingDetailPage() {
                 <div key={i} className="p-3 bg-blue-50 rounded-lg">
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-medium text-gray-800">{item.goal}</span>
-                    <span className="text-sm px-2 py-1 bg-blue-200 text-blue-800 rounded">{item.progress}</span>
+                    <span className={cn('text-sm px-2 py-1 rounded',
+                      item.progress === 'Achieved' ? 'bg-green-200 text-green-800' :
+                      item.progress === 'Almost' ? 'bg-blue-200 text-blue-800' :
+                      item.progress === 'In Progress' ? 'bg-yellow-200 text-yellow-800' :
+                      'bg-gray-200 text-gray-800'
+                    )}>{item.progress}</span>
                   </div>
                   <p className="text-base text-gray-600">{item.tips}</p>
                 </div>
@@ -388,7 +462,7 @@ export default function MeetingDetailPage() {
                     <span className="text-lg font-semibold text-gray-800">{analysis.otherSideAnalysis.mood}</span>
                     <div className="flex-1 bg-gray-200 rounded-full h-2">
                       <div 
-                        className="bg-purple-600 h-2 rounded-full" 
+                        className="bg-purple-600 h-2 rounded-full transition-all duration-500" 
                         style={{ width: `${analysis.otherSideAnalysis.moodScore}%` }}
                       ></div>
                     </div>
@@ -403,17 +477,19 @@ export default function MeetingDetailPage() {
                 <p className="text-sm text-purple-600 mb-1">Engagement Level</p>
                 <p className="text-base text-gray-800">{analysis.otherSideAnalysis.engagement}</p>
               </div>
-              <div className="p-3 bg-orange-50 rounded-lg">
-                <p className="text-sm text-orange-600 mb-2">Detected Concerns</p>
-                <ul className="space-y-1">
-                  {analysis.otherSideAnalysis.concerns.map((concern, i) => (
-                    <li key={i} className="text-base text-gray-700 flex items-center gap-2">
-                      <AlertTriangle size={14} className="text-orange-500" />
-                      {concern}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {analysis.otherSideAnalysis.concerns.length > 0 && (
+                <div className="p-3 bg-orange-50 rounded-lg">
+                  <p className="text-sm text-orange-600 mb-2">Detected Concerns</p>
+                  <ul className="space-y-1">
+                    {analysis.otherSideAnalysis.concerns.map((concern, i) => (
+                      <li key={i} className="text-base text-gray-700 flex items-center gap-2">
+                        <AlertTriangle size={14} className="text-orange-500" />
+                        {concern}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
 
@@ -430,7 +506,7 @@ export default function MeetingDetailPage() {
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3">
                 <div 
-                  className={cn('h-3 rounded-full', 
+                  className={cn('h-3 rounded-full transition-all duration-500', 
                     analysis.lieDetector.status === 'truthful' ? 'bg-green-500' :
                     analysis.lieDetector.status === 'suspicious' ? 'bg-red-500' : 'bg-yellow-500'
                   )}
@@ -482,6 +558,24 @@ export default function MeetingDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* Live Transcript */}
+          {transcript.length > 0 && (
+            <div className="bg-white rounded-xl shadow-sm p-6 lg:col-span-2">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <MessageSquare size={20} className="text-gray-600" />
+                Live Transcript
+              </h3>
+              <div className="max-h-48 overflow-y-auto space-y-2 bg-gray-50 p-4 rounded-lg">
+                {transcript.map((text, i) => (
+                  <p key={i} className="text-gray-700">
+                    <span className="text-gray-400 text-sm mr-2">[{i + 1}]</span>
+                    {text}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

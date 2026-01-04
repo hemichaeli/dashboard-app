@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, Calendar, BarChart3, Settings, LogOut, Menu, X, Globe } from 'lucide-react';
+import { LayoutDashboard, Calendar, BarChart3, Settings, LogOut, Menu, X, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { useState, useEffect } from 'react';
@@ -10,7 +10,6 @@ import { useState, useEffect } from 'react';
 const navigation = [
   { name: 'Dashboard', nameHe: 'לוח בקרה', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Meetings', nameHe: 'פגישות', href: '/dashboard/meetings', icon: Calendar },
-  { name: 'Users', nameHe: 'משתמשים', href: '/dashboard/users', icon: Users },
   { name: 'Analytics', nameHe: 'אנליטיקס', href: '/dashboard/analytics', icon: BarChart3 },
   { name: 'Settings', nameHe: 'הגדרות', href: '/dashboard/settings', icon: Settings },
 ];
@@ -33,7 +32,7 @@ export default function Sidebar() {
     setLanguage(lang);
     localStorage.setItem('language', lang);
     document.documentElement.dir = lang === 'he' ? 'rtl' : 'ltr';
-    window.location.reload(); // Reload to apply translations
+    window.location.reload();
   };
 
   const handleLogout = () => { logout(); window.location.href = '/auth/login'; };

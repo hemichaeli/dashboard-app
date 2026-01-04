@@ -10,6 +10,7 @@ interface TeamMember {
   name: string;
   role: string;
   email?: string;
+  voiceSample?: string;
 }
 
 interface Team {
@@ -44,8 +45,10 @@ export default function SettingsPage() {
   
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingMemberId, setRecordingMemberId] = useState<string | null>(null);
   const [audioURL, setAudioURL] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playingMemberId, setPlayingMemberId] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -87,7 +90,7 @@ export default function SettingsPage() {
     }
   }, [user]);
 
-  // Voice Recording Functions
+  // Voice Recording Functions for Profile
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -102,7 +105,6 @@ export default function SettingsPage() {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
         const url = URL.createObjectURL(audioBlob);
         setAudioURL(url);
-        // Save to localStorage as base64
         const reader = new FileReader();
         reader.onloadend = () => {
           localStorage.setItem('userVoiceSample', reader.result as string);
@@ -127,8 +129,10 @@ export default function SettingsPage() {
 
   const playAudio = () => {
     if (audioURL && audioRef.current) {
+      audioRef.current.src = audioURL;
       audioRef.current.play();
       setIsPlaying(true);
+      setPlayingMemberId(null);
     }
   };
 
@@ -136,6 +140,7 @@ export default function SettingsPage() {
     if (audioRef.current) {
       audioRef.current.pause();
       setIsPlaying(false);
+      setPlayingMemberId(null);
     }
   };
 
@@ -144,15 +149,77 @@ export default function SettingsPage() {
     localStorage.removeItem('userVoiceSample');
   };
 
+  // Voice Recording Functions for Team Members
+  const startMemberRecording = async (memberId: string) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        audioChunksRef.current.push(event.data);
+      };
+      
+      mediaRecorderRef.current.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (editingTeam) {
+            const newMembers = editingTeam.members.map(m => 
+              m.id === memberId ? { ...m, voiceSample: reader.result as string } : m
+            );
+            setEditingTeam({ ...editingTeam, members: newMembers });
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+        setRecordingMemberId(null);
+      };
+      
+      mediaRecorderRef.current.start();
+      setRecordingMemberId(memberId);
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Could not access microphone. Please check permissions.' });
+    }
+  };
+
+  const stopMemberRecording = () => {
+    if (mediaRecorderRef.current && recordingMemberId) {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const playMemberVoice = (memberId: string, voiceSample: string) => {
+    if (audioRef.current) {
+      audioRef.current.src = voiceSample;
+      audioRef.current.play();
+      setPlayingMemberId(memberId);
+    }
+  };
+
+  const stopMemberVoice = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      setPlayingMemberId(null);
+    }
+  };
+
+  const deleteMemberVoice = (memberId: string) => {
+    if (editingTeam) {
+      const newMembers = editingTeam.members.map(m => 
+        m.id === memberId ? { ...m, voiceSample: undefined } : m
+      );
+      setEditingTeam({ ...editingTeam, members: newMembers });
+    }
+  };
+
   // Profile Functions
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
     try {
-      // Save to localStorage
       localStorage.setItem('userProfile', JSON.stringify(profileForm));
-      // Also try to save to backend
       try {
         await authApi.updateProfile(profileForm);
         checkAuth();
@@ -238,6 +305,13 @@ export default function SettingsPage() {
     }
   };
 
+  const removeMember = (memberId: string) => {
+    if (editingTeam && editingTeam.members.length > 1) {
+      const newMembers = editingTeam.members.filter(m => m.id !== memberId);
+      setEditingTeam({ ...editingTeam, members: newMembers });
+    }
+  };
+
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -262,12 +336,22 @@ export default function SettingsPage() {
     { id: 'security', label: 'Security', icon: Lock }
   ];
 
+  // Count members with voice samples
+  const getMembersWithVoice = (team: Team) => team.members.filter(m => m.voiceSample).length;
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-500">Manage your profile, teams, and preferences</p>
       </div>
+
+      {/* Hidden audio element for playback */}
+      <audio
+        ref={audioRef}
+        onEnded={() => { setIsPlaying(false); setPlayingMemberId(null); }}
+        className="hidden"
+      />
 
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Tabs */}
@@ -366,7 +450,7 @@ export default function SettingsPage() {
                 </h3>
                 <p className="text-sm text-gray-500 mb-4">Record a sample of your voice so the AI can identify you in meetings</p>
                 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   {!isRecording ? (
                     <button
                       type="button"
@@ -391,11 +475,11 @@ export default function SettingsPage() {
                     <>
                       <button
                         type="button"
-                        onClick={isPlaying ? pauseAudio : playAudio}
+                        onClick={isPlaying && !playingMemberId ? pauseAudio : playAudio}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
                       >
-                        {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-                        {isPlaying ? 'Pause' : 'Play'}
+                        {isPlaying && !playingMemberId ? <Pause size={18} /> : <Play size={18} />}
+                        {isPlaying && !playingMemberId ? 'Pause' : 'Play'}
                       </button>
                       <button
                         type="button"
@@ -409,15 +493,6 @@ export default function SettingsPage() {
                     </>
                   )}
                 </div>
-                
-                {audioURL && (
-                  <audio
-                    ref={audioRef}
-                    src={audioURL}
-                    onEnded={() => setIsPlaying(false)}
-                    className="hidden"
-                  />
-                )}
               </div>
 
               <button
@@ -483,10 +558,18 @@ export default function SettingsPage() {
                         <div>
                           <p className="font-medium text-gray-700 flex items-center gap-1">
                             <Users size={14} /> Members ({team.members.filter(m => m.name).length})
+                            {getMembersWithVoice(team) > 0 && (
+                              <span className="ml-2 text-green-600 flex items-center gap-1">
+                                <Mic size={12} /> {getMembersWithVoice(team)}
+                              </span>
+                            )}
                           </p>
                           <ul className="mt-1 text-gray-600">
                             {team.members.filter(m => m.name).slice(0, 3).map(m => (
-                              <li key={m.id}>{m.name} {m.role && `- ${m.role}`}</li>
+                              <li key={m.id} className="flex items-center gap-1">
+                                {m.name} {m.role && `- ${m.role}`}
+                                {m.voiceSample && <Mic size={10} className="text-green-500" />}
+                              </li>
                             ))}
                             {team.members.filter(m => m.name).length > 3 && (
                               <li className="text-gray-400">+{team.members.filter(m => m.name).length - 3} more</li>
@@ -559,49 +642,112 @@ export default function SettingsPage() {
                   />
                 </div>
 
-                {/* Team Members */}
+                {/* Team Members with Voice Samples */}
                 <div className="border-t pt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm font-medium text-gray-700">Team Members</label>
+                  <div className="flex justify-between items-center mb-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">Team Members</label>
+                      <p className="text-xs text-gray-500">Add voice samples so AI can identify speakers in meetings</p>
+                    </div>
                     <button type="button" onClick={addMember} className="text-blue-600 text-sm hover:underline">
                       + Add Member
                     </button>
                   </div>
+                  
                   {editingTeam.members.map((member, idx) => (
-                    <div key={member.id} className="grid grid-cols-3 gap-2 mb-2">
-                      <input
-                        type="text"
-                        value={member.name}
-                        onChange={(e) => {
-                          const newMembers = [...editingTeam.members];
-                          newMembers[idx] = { ...member, name: e.target.value };
-                          setEditingTeam({ ...editingTeam, members: newMembers });
-                        }}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm"
-                        placeholder="Name"
-                      />
-                      <input
-                        type="text"
-                        value={member.role}
-                        onChange={(e) => {
-                          const newMembers = [...editingTeam.members];
-                          newMembers[idx] = { ...member, role: e.target.value };
-                          setEditingTeam({ ...editingTeam, members: newMembers });
-                        }}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm"
-                        placeholder="Role"
-                      />
-                      <input
-                        type="email"
-                        value={member.email || ''}
-                        onChange={(e) => {
-                          const newMembers = [...editingTeam.members];
-                          newMembers[idx] = { ...member, email: e.target.value };
-                          setEditingTeam({ ...editingTeam, members: newMembers });
-                        }}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm"
-                        placeholder="Email (optional)"
-                      />
+                    <div key={member.id} className="border rounded-lg p-3 mb-3 bg-gray-50">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={member.name}
+                          onChange={(e) => {
+                            const newMembers = [...editingTeam.members];
+                            newMembers[idx] = { ...member, name: e.target.value };
+                            setEditingTeam({ ...editingTeam, members: newMembers });
+                          }}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm bg-white"
+                          placeholder="Name"
+                        />
+                        <input
+                          type="text"
+                          value={member.role}
+                          onChange={(e) => {
+                            const newMembers = [...editingTeam.members];
+                            newMembers[idx] = { ...member, role: e.target.value };
+                            setEditingTeam({ ...editingTeam, members: newMembers });
+                          }}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm bg-white"
+                          placeholder="Role"
+                        />
+                        <input
+                          type="email"
+                          value={member.email || ''}
+                          onChange={(e) => {
+                            const newMembers = [...editingTeam.members];
+                            newMembers[idx] = { ...member, email: e.target.value };
+                            setEditingTeam({ ...editingTeam, members: newMembers });
+                          }}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm bg-white"
+                          placeholder="Email (optional)"
+                        />
+                      </div>
+                      
+                      {/* Voice Sample Controls */}
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {recordingMemberId === member.id ? (
+                          <button
+                            type="button"
+                            onClick={stopMemberRecording}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-gray-600 text-white rounded-lg text-xs hover:bg-gray-700 animate-pulse"
+                          >
+                            <Square size={14} />
+                            Stop
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startMemberRecording(member.id)}
+                            disabled={!!recordingMemberId}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs hover:bg-red-600 disabled:opacity-50"
+                          >
+                            <Mic size={14} />
+                            {member.voiceSample ? 'Re-record' : 'Record Voice'}
+                          </button>
+                        )}
+                        
+                        {member.voiceSample && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => playingMemberId === member.id ? stopMemberVoice() : playMemberVoice(member.id, member.voiceSample!)}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs hover:bg-blue-600"
+                            >
+                              {playingMemberId === member.id ? <Pause size={14} /> : <Play size={14} />}
+                              {playingMemberId === member.id ? 'Stop' : 'Play'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteMemberVoice(member.id)}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs hover:bg-gray-300"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            <span className="text-green-600 text-xs flex items-center gap-1">
+                              <Mic size={12} /> Voice saved
+                            </span>
+                          </>
+                        )}
+                        
+                        {editingTeam.members.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeMember(member.id)}
+                            className="ml-auto text-red-500 hover:text-red-700 text-xs"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

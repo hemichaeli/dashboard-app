@@ -6,6 +6,9 @@ export interface User {
   avatar?: string;
   phone?: string;
   department?: string;
+  company?: string;
+  background?: string;
+  voiceSample?: string;
   status: 'active' | 'inactive' | 'suspended';
   created_at: string;
   last_login?: string;

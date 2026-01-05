@@ -46,7 +46,7 @@ const migrate = async () => {
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         title VARCHAR(500) NOT NULL,
         subject VARCHAR(500),
-        date DATE NOT NULL,
+        date DATE,
         time TIME,
         end_time TIME,
         location VARCHAR(500),
@@ -57,11 +57,31 @@ const migrate = async () => {
         agenda JSONB DEFAULT '[]'::jsonb,
         things_to_be_aware_of TEXT,
         participant_notes TEXT,
-        additional_notes TEXT,
+        additional_notes JSONB DEFAULT '{}'::jsonb,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         completed_at TIMESTAMP WITH TIME ZONE
       );
+    `);
+
+    // Alter existing meetings table to allow NULL date
+    await client.query(`
+      ALTER TABLE meetings ALTER COLUMN date DROP NOT NULL;
+    `);
+
+    // Alter additional_notes to JSONB if it's TEXT
+    await client.query(`
+      DO $$ 
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'meetings' 
+          AND column_name = 'additional_notes' 
+          AND data_type = 'text'
+        ) THEN
+          ALTER TABLE meetings ALTER COLUMN additional_notes TYPE JSONB USING COALESCE(additional_notes::jsonb, '{}'::jsonb);
+        END IF;
+      END $$;
     `);
 
     // Meeting participants table

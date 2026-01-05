@@ -45,6 +45,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     res.json({ meetings: meetingsWithDetails, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) {
+    console.error('Get meetings error:', error);
     res.status(500).json({ error: 'Failed to get meetings' });
   }
 });
@@ -59,6 +60,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     const tasks = await query('SELECT * FROM meeting_tasks WHERE meeting_id = $1', [meeting.id]);
     res.json({ ...meeting, participants: participants.rows, tasks: tasks.rows });
   } catch (error) {
+    console.error('Get single meeting error:', error);
     res.status(500).json({ error: 'Failed to get meeting' });
   }
 });
@@ -66,21 +68,28 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 // Create meeting
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   const { title, subject, date, time, end_time, location, meeting_link, purpose, goals, agenda, things_to_be_aware_of, participant_notes, additional_notes, participants } = req.body;
+  
+  console.log('Create meeting request:', { title, subject, date, time, userId: req.user?.id });
+  
   try {
     const result = await query(
       `INSERT INTO meetings (user_id, title, subject, date, time, end_time, location, meeting_link, purpose, goals, agenda, things_to_be_aware_of, participant_notes, additional_notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
-      [req.user!.id, title, subject, date, time, end_time, location, meeting_link, purpose, JSON.stringify(goals || []), JSON.stringify(agenda || []), things_to_be_aware_of, participant_notes, additional_notes]
+      [req.user!.id, title, subject || null, date || null, time || null, end_time || null, location || null, meeting_link || null, purpose || null, JSON.stringify(goals || []), JSON.stringify(agenda || []), things_to_be_aware_of || null, participant_notes || null, additional_notes || null]
     );
     const meeting = result.rows[0];
+    
     if (participants?.length) {
       for (const p of participants) {
-        await query(`INSERT INTO meeting_participants (meeting_id, name, email, role, company, background, notes, added_from_content) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [meeting.id, p.name, p.email, p.role, p.company, p.background, p.notes, p.added_from_content || false]);
+        await query(`INSERT INTO meeting_participants (meeting_id, name, email, role, company, background, notes, added_from_content) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [meeting.id, p.name, p.email || null, p.role || null, p.company || null, p.background || null, p.notes || null, p.added_from_content || false]);
       }
     }
+    
     const participantsResult = await query('SELECT * FROM meeting_participants WHERE meeting_id = $1', [meeting.id]);
+    console.log('Meeting created successfully:', meeting.id);
     res.status(201).json({ ...meeting, participants: participantsResult.rows, tasks: [] });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create meeting' });
+    console.error('Create meeting error:', error);
+    res.status(500).json({ error: 'Failed to create meeting', details: String(error) });
   }
 });
 
@@ -96,6 +105,7 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     const tasks = await query('SELECT * FROM meeting_tasks WHERE meeting_id = $1', [id]);
     res.json({ ...result.rows[0], participants: participants.rows, tasks: tasks.rows });
   } catch (error) {
+    console.error('Update meeting error:', error);
     res.status(500).json({ error: 'Failed to update meeting' });
   }
 });
@@ -107,6 +117,7 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     if (result.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
     res.json({ message: 'Meeting deleted successfully' });
   } catch (error) {
+    console.error('Delete meeting error:', error);
     res.status(500).json({ error: 'Failed to delete meeting' });
   }
 });
@@ -121,6 +132,7 @@ router.put('/:id/brief', authenticateToken, async (req: AuthRequest, res: Respon
     const result = await query(`UPDATE meetings SET purpose = COALESCE($1, purpose), goals = COALESCE($2, goals), agenda = COALESCE($3, agenda), things_to_be_aware_of = COALESCE($4, things_to_be_aware_of), participant_notes = COALESCE($5, participant_notes), additional_notes = COALESCE($6, additional_notes), updated_at = NOW() WHERE id = $7 RETURNING *`, [purpose, goals ? JSON.stringify(goals) : null, agenda ? JSON.stringify(agenda) : null, things_to_be_aware_of, participant_notes, additional_notes, id]);
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Update brief error:', error);
     res.status(500).json({ error: 'Failed to update meeting brief' });
   }
 });
@@ -135,6 +147,7 @@ router.post('/:id/participants', authenticateToken, async (req: AuthRequest, res
     const result = await query(`INSERT INTO meeting_participants (meeting_id, name, email, role, company, background, notes, added_from_content) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`, [id, name, email, role, company, background, notes, added_from_content || false]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('Add participant error:', error);
     res.status(500).json({ error: 'Failed to add participant' });
   }
 });
@@ -150,6 +163,7 @@ router.put('/:id/participants/:participantId', authenticateToken, async (req: Au
     if (result.rows.length === 0) return res.status(404).json({ error: 'Participant not found' });
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Update participant error:', error);
     res.status(500).json({ error: 'Failed to update participant' });
   }
 });
@@ -164,6 +178,7 @@ router.delete('/:id/participants/:participantId', authenticateToken, async (req:
     if (result.rows.length === 0) return res.status(404).json({ error: 'Participant not found' });
     res.json({ message: 'Participant removed successfully' });
   } catch (error) {
+    console.error('Delete participant error:', error);
     res.status(500).json({ error: 'Failed to remove participant' });
   }
 });
@@ -176,7 +191,7 @@ router.post('/:id/extract-participants', authenticateToken, async (req: AuthRequ
     const existing = await query('SELECT id FROM meetings WHERE id = $1 AND user_id = $2', [id, req.user!.id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
     const extractedNames = new Set<string>();
-    const patterns = [/(?:with|from|to|cc|attendees?:?)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)/gi, /(?:Mr\\.|Mrs\\.|Ms\\.|Dr\\.)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)/gi];
+    const patterns = [/(?:with|from|to|cc|attendees?:?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi, /(?:Mr\.|Mrs\.|Ms\.|Dr\.)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi];
     for (const pattern of patterns) {
       let match;
       while ((match = pattern.exec(content)) !== null) {
@@ -184,7 +199,7 @@ router.post('/:id/extract-participants', authenticateToken, async (req: AuthRequ
         if (name.length > 2) extractedNames.add(name);
       }
     }
-    const emailPattern = /([A-Za-z]+)\\.([A-Za-z]+)@/g;
+    const emailPattern = /([A-Za-z]+)\.([A-Za-z]+)@/g;
     let emailMatch;
     while ((emailMatch = emailPattern.exec(content)) !== null) {
       extractedNames.add(`${emailMatch[1].charAt(0).toUpperCase() + emailMatch[1].slice(1)} ${emailMatch[2].charAt(0).toUpperCase() + emailMatch[2].slice(1)}`);
@@ -200,6 +215,7 @@ router.post('/:id/extract-participants', authenticateToken, async (req: AuthRequ
     }
     res.json({ extracted: newParticipants.length, participants: newParticipants });
   } catch (error) {
+    console.error('Extract participants error:', error);
     res.status(500).json({ error: 'Failed to extract participants' });
   }
 });
@@ -214,6 +230,7 @@ router.post('/:id/tasks', authenticateToken, async (req: AuthRequest, res: Respo
     const result = await query(`INSERT INTO meeting_tasks (meeting_id, title, description, assigned_to, due_date, priority, is_urgent) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`, [id, title, description, assigned_to, due_date, priority || 'medium', is_urgent || false]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('Add task error:', error);
     res.status(500).json({ error: 'Failed to add task' });
   }
 });
@@ -229,6 +246,7 @@ router.put('/:id/tasks/:taskId', authenticateToken, async (req: AuthRequest, res
     if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Update task error:', error);
     res.status(500).json({ error: 'Failed to update task' });
   }
 });
@@ -243,6 +261,7 @@ router.delete('/:id/tasks/:taskId', authenticateToken, async (req: AuthRequest, 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
     res.json({ message: 'Task deleted successfully' });
   } catch (error) {
+    console.error('Delete task error:', error);
     res.status(500).json({ error: 'Failed to delete task' });
   }
 });
@@ -255,6 +274,7 @@ router.post('/:id/complete', authenticateToken, async (req: AuthRequest, res: Re
     if (result.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
     res.json(result.rows[0]);
   } catch (error) {
+    console.error('Complete meeting error:', error);
     res.status(500).json({ error: 'Failed to complete meeting' });
   }
 });

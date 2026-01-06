@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Sidebar from '@/components/layout/Sidebar';
 import { useAuthStore } from '@/store/auth';
 import { useLanguage } from '@/lib/LanguageContext';
 
@@ -23,8 +22,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-[#101622]">
+        <span className="material-symbols-outlined animate-spin text-4xl text-[#135bec]">progress_activity</span>
       </div>
     );
   }
@@ -32,11 +31,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!isAuthenticated) return null;
 
   return (
-    <div className={`min-h-screen flex bg-gray-50 ${isRTL ? 'flex-row-reverse' : ''}`}>
-      <Sidebar />
-      <main className={`flex-1 ${isRTL ? 'lg:mr-0' : 'lg:ml-0'} p-6 pt-16 lg:pt-6`}>
-        {children}
-      </main>
+    <div className={`min-h-screen bg-[#101622] text-white font-display ${isRTL ? 'rtl' : 'ltr'}`} dir={isRTL ? 'rtl' : 'ltr'}>
+      {children}
     </div>
   );
 }

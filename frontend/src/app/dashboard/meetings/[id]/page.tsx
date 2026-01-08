@@ -28,6 +28,7 @@ export default function MeetingDetailPage() {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [lastAnalyzedLength, setLastAnalyzedLength] = useState(0);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<string>('');
   const recognitionRef = useRef<any>(null);
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -54,12 +55,35 @@ export default function MeetingDetailPage() {
   const additionalNotes = meeting ? parseAdditionalNotes(meeting.additional_notes) : null;
 
   const getMeetingContext = useCallback((): MeetingContext => {
+    // Get user profile and selected team from localStorage
+    let myProfile = null;
+    let selectedTeam = null;
+    
+    try {
+      const savedProfile = localStorage.getItem('userProfile');
+      if (savedProfile) myProfile = JSON.parse(savedProfile);
+    } catch {}
+    
+    try {
+      if (additionalNotes?.selected_team) {
+        selectedTeam = additionalNotes.selected_team;
+      }
+    } catch {}
+
     return {
       title: meeting?.title || '',
+      subject: meeting?.subject || '',
       goals: meeting?.goals || [],
-      participants: meeting?.participants?.map(p => ({ name: p.name, role: p.role || '', company: p.company || '' })) || [],
+      participants: meeting?.participants?.map(p => ({ 
+        name: p.name, 
+        role: p.role || '', 
+        company: p.company || '',
+        background: p.notes || ''
+      })) || [],
       teamMembers: additionalNotes?.team_members?.map((t: any) => ({ name: t.name, position: t.position || '' })) || [],
-      concerns: additionalNotes?.concerns || ''
+      concerns: additionalNotes?.concerns || '',
+      myProfile,
+      selectedTeam
     };
   }, [meeting, additionalNotes]);
 
@@ -81,11 +105,18 @@ export default function MeetingDetailPage() {
     
     setAnalyzing(true);
     setAiError(null);
+    setAiStatus('שולח לניתוח AI...');
+    
     try {
       const transcriptTexts = transcript.map(t => t.text);
+      console.log('[AI] Sending analysis request:', { transcriptLength: transcriptTexts.length });
+      
       const response = await aiApi.analyze(transcriptTexts, getMeetingContext(), analysis || undefined);
+      console.log('[AI] Analysis response:', response.data);
+      
       setAnalysis(response.data);
       setLastAnalyzedLength(transcript.length);
+      setAiStatus('ניתוח הושלם בהצלחה');
       
       setTranscript(prev => prev.map((entry, idx) => {
         if (idx >= lastAnalyzedLength - 3) {
@@ -95,8 +126,10 @@ export default function MeetingDetailPage() {
         return entry;
       }));
     } catch (error: any) {
-      console.error('AI Analysis failed:', error);
-      setAiError(error.response?.data?.error || error.message || 'AI analysis failed');
+      console.error('[AI] Analysis failed:', error);
+      const errorMsg = error.response?.data?.error || error.response?.data?.details || error.message || 'AI analysis failed';
+      setAiError(errorMsg);
+      setAiStatus(`שגיאה: ${errorMsg}`);
     } finally {
       setAnalyzing(false);
     }
@@ -116,6 +149,7 @@ export default function MeetingDetailPage() {
     setMeetingStarted(true);
     setIsListening(true);
     setAiError(null);
+    setAiStatus('מתחיל מאזין...');
 
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -128,6 +162,7 @@ export default function MeetingDetailPage() {
         const result = event.results[event.results.length - 1];
         if (result.isFinal) {
           const newText = result[0].transcript;
+          console.log('[Speech] New transcript:', newText);
           const newEntry: TranscriptEntry = { text: newText, timestamp: new Date(), lieStatus: 'unknown', lieConfidence: 0 };
           setTranscript(prev => [...prev, newEntry]);
         }
@@ -135,36 +170,63 @@ export default function MeetingDetailPage() {
 
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
-        if (event.error === 'not-allowed') alert('Microphone access denied.');
+        setAiStatus(`שגיאת מיקרופון: ${event.error}`);
+        if (event.error === 'not-allowed') {
+          setAiError('גישה למיקרופון נדחתה. אנא אשר גישה בדפדפן.');
+        }
       };
 
       recognitionRef.current.onend = () => {
         if (isListening && recognitionRef.current) {
-          try { recognitionRef.current.start(); } catch (e) { console.log('Recognition restart failed:', e); }
+          try { 
+            recognitionRef.current.start(); 
+            setAiStatus('מאזין...');
+          } catch (e) { 
+            console.log('Recognition restart failed:', e); 
+          }
         }
       };
       
-      try { recognitionRef.current.start(); } catch (e) { console.error('Failed to start speech recognition:', e); }
+      try { 
+        recognitionRef.current.start(); 
+        setAiStatus('מאזין - דבר עכשיו');
+      } catch (e) { 
+        console.error('Failed to start speech recognition:', e);
+        setAiError('לא ניתן להתחיל האזנה');
+      }
     } else {
-      alert('Speech recognition is not supported in this browser. Please use Chrome.');
+      setAiError('זיהוי דיבור לא נתמך בדפדפן זה. אנא השתמש ב-Chrome.');
+      return;
     }
 
     // Initial analysis
     setAnalyzing(true);
+    setAiStatus('מתחבר ל-AI...');
+    
     try {
-      const response = await aiApi.analyze(['Meeting started...'], getMeetingContext());
+      console.log('[AI] Sending initial analysis request');
+      const response = await aiApi.analyze(['Meeting started - הפגישה התחילה'], getMeetingContext());
+      console.log('[AI] Initial analysis response:', response.data);
       setAnalysis(response.data);
+      setAiStatus('AI מוכן לניתוח');
     } catch (error: any) {
-      console.error('Initial analysis failed:', error);
-      setAiError(error.response?.data?.error || 'Failed to connect to AI service');
-      // Provide fallback analysis
+      console.error('[AI] Initial analysis failed:', error);
+      const errorMsg = error.response?.data?.error || error.response?.data?.details || error.message || 'Failed to connect to AI service';
+      setAiError(errorMsg);
+      setAiStatus(`שגיאת AI: ${errorMsg}`);
+      
+      // Provide fallback analysis so UI still shows something
       setAnalysis({
-        suggestions: ['Waiting for AI service...', 'Check your connection', 'Try refreshing the page'],
-        goalProgress: meeting?.goals?.map(g => ({ goal: g, progress: 'Not Started', tips: 'Waiting for analysis' })) || [],
-        otherSideAnalysis: { mood: 'Unknown', moodScore: 50, tone: 'Not detected', engagement: 'Waiting for data', concerns: [] },
-        lieDetector: { confidence: 0, indicators: ['Waiting for speech...'], status: 'truthful' },
-        keyInsights: ['Meeting started', 'Waiting for conversation...'],
-        nextMoves: ['Start speaking', 'AI will analyze in real-time']
+        suggestions: [
+          'שירות AI לא זמין כרגע',
+          'בדוק שה-OPENAI_API_KEY מוגדר ב-Railway',
+          'נסה לרענן את העמוד'
+        ],
+        goalProgress: meeting?.goals?.map(g => ({ goal: g, progress: 'Not Started', tips: 'ממתין לניתוח AI' })) || [],
+        otherSideAnalysis: { mood: 'Unknown', moodScore: 50, tone: 'לא זוהה', engagement: 'ממתין לנתונים', concerns: [] },
+        lieDetector: { confidence: 0, indicators: ['ממתין לדיבור...'], status: 'truthful' },
+        keyInsights: ['הפגישה התחילה', 'AI לא זמין - בדוק הגדרות'],
+        nextMoves: ['התחל לדבר', 'בדוק את הגדרות Railway', 'ודא ש-OPENAI_API_KEY מוגדר']
       });
     } finally {
       setAnalyzing(false);
@@ -173,12 +235,14 @@ export default function MeetingDetailPage() {
 
   const stopListening = () => {
     setIsListening(false);
+    setAiStatus('האזנה מושהית');
     if (recognitionRef.current) recognitionRef.current.stop();
   };
 
   const endMeeting = () => {
     setMeetingStarted(false);
     setIsListening(false);
+    setAiStatus('הפגישה הסתיימה');
     if (recognitionRef.current) recognitionRef.current.stop();
     if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
   };
@@ -328,6 +392,22 @@ export default function MeetingDetailPage() {
           )}
         </div>
 
+        {/* AI Status Banner */}
+        {meetingStarted && aiStatus && (
+          <div className={cn(
+            'flex items-center gap-3 p-3 rounded-xl text-sm',
+            aiError ? 'bg-red-500/10 border border-red-500/30 text-red-400' : 'bg-[#135bec]/10 border border-[#135bec]/30 text-blue-300'
+          )}>
+            <span className={cn(
+              "material-symbols-outlined text-[18px]",
+              analyzing && "animate-spin"
+            )}>
+              {aiError ? 'error' : analyzing ? 'progress_activity' : 'check_circle'}
+            </span>
+            <span>{aiStatus}</span>
+          </div>
+        )}
+
         {/* Listening Indicator */}
         {isListening && (
           <div className="flex items-center gap-4 p-4 bg-[#135bec]/10 border border-[#135bec]/30 rounded-xl">
@@ -344,7 +424,7 @@ export default function MeetingDetailPage() {
             </div>
             <button 
               onClick={runAnalysis} 
-              disabled={analyzing} 
+              disabled={analyzing || transcript.length === 0} 
               className="flex items-center gap-2 px-4 py-2 bg-[#135bec] text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
             >
               <span className={cn("material-symbols-outlined text-[16px]", analyzing && "animate-spin")}>refresh</span>
@@ -356,9 +436,15 @@ export default function MeetingDetailPage() {
         {/* AI Error */}
         {aiError && (
           <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-            <div className="flex items-center gap-2 text-red-400">
-              <span className="material-symbols-outlined">error</span>
-              <span className="font-medium">AI Error: {aiError}</span>
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-red-400">error</span>
+              <div>
+                <p className="font-medium text-red-400">שגיאת AI</p>
+                <p className="text-sm text-red-300 mt-1">{aiError}</p>
+                <p className="text-xs text-gray-500 mt-2">
+                  טיפ: ודא שמשתנה הסביבה OPENAI_API_KEY מוגדר ב-Railway Backend
+                </p>
+              </div>
             </div>
           </div>
         )}

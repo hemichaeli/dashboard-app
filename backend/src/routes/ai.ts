@@ -4,19 +4,24 @@ import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Check if API key exists
+const apiKey = process.env.OPENAI_API_KEY;
+console.log(`[AI] OpenAI API Key configured: ${apiKey ? 'YES (length: ' + apiKey.length + ')' : 'NO - MISSING!'}`);
+
+const openai = apiKey ? new OpenAI({ apiKey }) : null;
 
 // Model to use for AI analysis - GPT-4o-mini is fast and cost-effective
 const AI_MODEL = 'gpt-4o-mini';
 
 interface MeetingContext {
   title: string;
+  subject?: string;
   goals: string[];
-  participants: { name: string; role: string; company: string }[];
+  participants: { name: string; role: string; company: string; background?: string }[];
   teamMembers: { name: string; position: string }[];
   concerns: string;
+  myProfile?: { name: string; role: string; company: string; background: string };
+  selectedTeam?: { name: string; description: string; members: { name: string; role: string }[] };
 }
 
 interface AnalysisRequest {
@@ -27,8 +32,24 @@ interface AnalysisRequest {
 
 // Analyze meeting transcript in real-time
 router.post('/analyze', authenticateToken, async (req, res) => {
+  console.log('[AI] /analyze endpoint called');
+  
   try {
+    // Check if OpenAI is configured
+    if (!openai) {
+      console.error('[AI] OpenAI client not initialized - missing API key');
+      return res.status(503).json({ 
+        error: 'AI service not configured',
+        details: 'OpenAI API key is missing. Please configure OPENAI_API_KEY environment variable.'
+      });
+    }
+
     const { transcript, meetingContext, previousAnalysis } = req.body as AnalysisRequest;
+    console.log('[AI] Request received:', { 
+      transcriptLength: transcript?.length || 0, 
+      hasContext: !!meetingContext,
+      title: meetingContext?.title 
+    });
 
     if (!transcript || transcript.length === 0) {
       return res.status(400).json({ error: 'No transcript provided' });
@@ -37,47 +58,67 @@ router.post('/analyze', authenticateToken, async (req, res) => {
     const recentTranscript = transcript.slice(-20).join('\n');
     const goalsText = meetingContext.goals?.join(', ') || 'No specific goals';
     const participantsText = meetingContext.participants?.map(p => `${p.name} (${p.role} at ${p.company})`).join(', ') || 'Unknown';
+    
+    // Build enhanced context
+    let enhancedContext = '';
+    if (meetingContext.myProfile) {
+      enhancedContext += `\nMy Profile: ${meetingContext.myProfile.name} - ${meetingContext.myProfile.role} at ${meetingContext.myProfile.company}`;
+      if (meetingContext.myProfile.background) {
+        enhancedContext += `. Background: ${meetingContext.myProfile.background}`;
+      }
+    }
+    if (meetingContext.selectedTeam) {
+      enhancedContext += `\nMy Team: ${meetingContext.selectedTeam.name}`;
+      if (meetingContext.selectedTeam.members?.length > 0) {
+        enhancedContext += ` (${meetingContext.selectedTeam.members.map(m => m.name).join(', ')})`;
+      }
+    }
 
-    const systemPrompt = `You are an expert meeting analyst and strategic advisor. Your job is to analyze real-time meeting conversations and provide actionable insights.
+    const systemPrompt = `You are an expert meeting analyst and strategic advisor providing REAL-TIME analysis during a live meeting. Your job is to help the user succeed in their meeting goals.
 
 Meeting Context:
 - Title: ${meetingContext.title}
+- Subject: ${meetingContext.subject || 'General discussion'}
 - Goals: ${goalsText}
-- Participants: ${participantsText}
-- Concerns to watch: ${meetingContext.concerns || 'None specified'}
+- Other Side Participants: ${participantsText}
+- Concerns to watch: ${meetingContext.concerns || 'None specified'}${enhancedContext}
 
-Analyze the conversation and provide insights in the following JSON format ONLY (no other text):
+IMPORTANT: Provide actionable, specific insights. Analyze both what is being said AND what might be left unsaid. Detect potential lies or evasions.
+
+Respond in the following JSON format ONLY (no other text):
 {
-  "suggestions": ["3 specific actionable suggestions to achieve meeting goals"],
+  "suggestions": ["3 specific actionable suggestions - be tactical and direct"],
   "goalProgress": [
-    {"goal": "goal text", "progress": "Not Started|In Progress|Almost|Achieved", "tips": "specific tip"}
+    {"goal": "goal text", "progress": "Not Started|In Progress|Almost|Achieved", "tips": "specific tactical tip"}
   ],
   "otherSideAnalysis": {
-    "mood": "single word mood",
+    "mood": "single word mood (e.g., Defensive, Open, Hesitant, Eager)",
     "moodScore": 0-100,
-    "tone": "brief description of tone",
-    "engagement": "engagement level description",
-    "concerns": ["detected concerns from their speech"]
+    "tone": "brief description of their communication tone",
+    "engagement": "Low|Medium|High with brief explanation",
+    "concerns": ["specific concerns you detect from their words"]
   },
   "lieDetector": {
     "confidence": 0-100,
-    "indicators": ["behavioral indicators observed"],
+    "indicators": ["specific behavioral or linguistic indicators"],
     "status": "truthful|uncertain|suspicious"
   },
-  "keyInsights": ["3-5 key observations about the meeting dynamics"],
-  "nextMoves": ["3 recommended next actions"]
+  "keyInsights": ["3-5 specific observations about negotiation dynamics, power balance, hidden agendas"],
+  "nextMoves": ["3 specific recommended actions - be tactical and strategic"]
 }`;
 
+    console.log('[AI] Calling OpenAI API...');
     const response = await openai.chat.completions.create({
       model: AI_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Recent conversation transcript:\n${recentTranscript}\n\nProvide real-time analysis.` }
+        { role: 'user', content: `Recent conversation transcript:\n${recentTranscript}\n\nProvide real-time tactical analysis.` }
       ],
       temperature: 0.7,
       max_tokens: 1500,
     });
 
+    console.log('[AI] OpenAI response received');
     const content = response.choices[0]?.message?.content || '';
     
     // Try to parse JSON from response
@@ -86,7 +127,9 @@ Analyze the conversation and provide insights in the following JSON format ONLY 
       // Remove markdown code blocks if present
       const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysis = JSON.parse(jsonStr);
+      console.log('[AI] Analysis parsed successfully');
     } catch (parseError) {
+      console.warn('[AI] JSON parse failed, using default structure');
       // If parsing fails, return a structured default with the raw content
       analysis = {
         suggestions: ['Continue the current discussion', 'Stay focused on the main objectives', 'Build rapport with participants'],
@@ -111,7 +154,8 @@ Analyze the conversation and provide insights in the following JSON format ONLY 
 
     res.json(analysis);
   } catch (error: any) {
-    console.error('AI Analysis error:', error);
+    console.error('[AI] Analysis error:', error.message);
+    console.error('[AI] Full error:', error);
     res.status(500).json({ 
       error: 'Failed to analyze transcript',
       details: error.message 
@@ -122,6 +166,10 @@ Analyze the conversation and provide insights in the following JSON format ONLY 
 // Quick sentiment analysis for a single utterance
 router.post('/sentiment', authenticateToken, async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({ error: 'AI service not configured' });
+    }
+
     const { text } = req.body;
 
     if (!text) {
@@ -155,6 +203,10 @@ router.post('/sentiment', authenticateToken, async (req, res) => {
 // Generate strategic response suggestions
 router.post('/suggest-response', authenticateToken, async (req, res) => {
   try {
+    if (!openai) {
+      return res.status(503).json({ error: 'AI service not configured' });
+    }
+
     const { lastStatement, meetingGoals, context } = req.body;
 
     const response = await openai.chat.completions.create({
@@ -179,6 +231,15 @@ router.post('/suggest-response', authenticateToken, async (req, res) => {
     console.error('Response suggestion error:', error);
     res.status(500).json({ error: 'Failed to generate suggestions' });
   }
+});
+
+// Health check for AI service
+router.get('/health', (req, res) => {
+  res.json({
+    status: openai ? 'ok' : 'degraded',
+    aiConfigured: !!openai,
+    model: AI_MODEL
+  });
 });
 
 export default router;

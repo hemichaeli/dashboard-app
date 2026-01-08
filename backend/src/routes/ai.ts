@@ -30,6 +30,58 @@ interface AnalysisRequest {
   previousAnalysis?: any;
 }
 
+// Health check for AI service (no auth required)
+router.get('/health', (req, res) => {
+  const status = {
+    status: openai ? 'ok' : 'degraded',
+    aiConfigured: !!openai,
+    apiKeyPresent: !!apiKey,
+    apiKeyLength: apiKey ? apiKey.length : 0,
+    model: AI_MODEL,
+    timestamp: new Date().toISOString()
+  };
+  console.log('[AI] Health check:', status);
+  res.json(status);
+});
+
+// Test AI connection (no auth required for debugging)
+router.get('/test', async (req, res) => {
+  console.log('[AI] Test endpoint called');
+  
+  if (!openai) {
+    return res.status(503).json({ 
+      error: 'AI service not configured',
+      details: 'OpenAI API key is missing',
+      apiKeyPresent: !!apiKey
+    });
+  }
+
+  try {
+    console.log('[AI] Testing OpenAI connection...');
+    const response = await openai.chat.completions.create({
+      model: AI_MODEL,
+      messages: [{ role: 'user', content: 'Say "AI is working" in Hebrew' }],
+      max_tokens: 50,
+    });
+    
+    const result = response.choices[0]?.message?.content || 'No response';
+    console.log('[AI] Test successful:', result);
+    
+    res.json({ 
+      status: 'ok', 
+      message: result,
+      model: AI_MODEL
+    });
+  } catch (error: any) {
+    console.error('[AI] Test failed:', error.message);
+    res.status(500).json({ 
+      error: 'AI test failed',
+      details: error.message,
+      code: error.code
+    });
+  }
+});
+
 // Analyze meeting transcript in real-time
 router.post('/analyze', authenticateToken, async (req, res) => {
   console.log('[AI] /analyze endpoint called');
@@ -231,15 +283,6 @@ router.post('/suggest-response', authenticateToken, async (req, res) => {
     console.error('Response suggestion error:', error);
     res.status(500).json({ error: 'Failed to generate suggestions' });
   }
-});
-
-// Health check for AI service
-router.get('/health', (req, res) => {
-  res.json({
-    status: openai ? 'ok' : 'degraded',
-    aiConfigured: !!openai,
-    model: AI_MODEL
-  });
 });
 
 export default router;
